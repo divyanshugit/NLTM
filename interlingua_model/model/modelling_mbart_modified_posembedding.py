@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ PyTorch MBART model."""
+from ast import Try
 import copy
 import math
 import random
@@ -35,7 +36,7 @@ from transformers.modeling_outputs import (
     Seq2SeqQuestionAnsweringModelOutput,
     Seq2SeqSequenceClassifierOutput,
 )
-from .modeling_utils_mod import PreTrainedModel
+#from transformers.modeling_utils import PreTrainedModel
 from transformers.utils import (
     add_code_sample_docstrings,
     add_end_docstrings,
@@ -45,6 +46,9 @@ from transformers.utils import (
     replace_return_docstrings,
 )
 from transformers.models.mbart.configuration_mbart import MBartConfig
+
+#from .model_utils_mod import PreTrainedModel
+from .modeling_utils_mod_pos import PreTrainedModel
 
 
 logger = logging.get_logger(__name__)
@@ -844,11 +848,15 @@ class MBartEncoder(MBartPreTrainedModel):
         self.padding_idx = config.pad_token_id
         self.max_source_positions = config.max_position_embeddings
         self.embed_scale = math.sqrt(embed_dim) if config.scale_embedding else 1.0
+        self.pos_embed_scale = math.sqrt(embed_dim) if config.scale_embedding else 1.0
 
         if embed_tokens is not None:
             self.embed_tokens = embed_tokens
         else:
             self.embed_tokens = nn.Embedding(config.vocab_size, embed_dim, self.padding_idx)
+
+        ### for token pos embedding:
+        self.embed_positions_pos =  nn.Embedding(config.vocab_size, embed_dim, self.padding_idx)
 
         self.embed_positions = MBartLearnedPositionalEmbedding(
             config.max_position_embeddings,
@@ -870,7 +878,7 @@ class MBartEncoder(MBartPreTrainedModel):
     def forward(
         self,
         input_ids: torch.LongTensor = None,
-        # pos_ids : torch.LongTensor = None,
+        #pos: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         head_mask: Optional[torch.Tensor] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
@@ -914,7 +922,15 @@ class MBartEncoder(MBartPreTrainedModel):
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
+        #print("inside-encoder")
+        # Experimenting
+        # if type(input_ids) is tuple:
+        #     print("Check - I")
+        #     input_ids, pos = input_ids
+        # else:
+        #     input_ids = input_ids
         # retrieve input_ids and inputs_embeds
+        input_ids, pos = input_ids
         if input_ids is not None and inputs_embeds is not None:
             raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
         elif input_ids is not None:
@@ -930,16 +946,19 @@ class MBartEncoder(MBartPreTrainedModel):
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids) * self.embed_scale
 
-        print("input----embedds")
+        #print("input----embedds")  # embedding of tokens
         #print(inputs_embeds.shape)
         #print(inputs_embeds)
 
-        embed_pos = self.embed_positions(input_shape)
-        print("positional--embedding")
+        embed_pos = self.embed_positions(input_shape)  # embedding of position
+        #print("positional--embedding")
         #print(embed_pos.shape)
         #print(embed_pos)
 
-        hidden_states = inputs_embeds + embed_pos ######################################## here we can add the interlingua vector
+        embed_pos_tag = self.embed_positions_pos(pos) * self.pos_embed_scale
+        #print("pos-tag-embed-generated")
+
+        hidden_states = inputs_embeds + embed_pos + embed_pos_tag ######################################## here we can add the interlingua vector
         hidden_states = self.layernorm_embedding(hidden_states)
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
 
@@ -1313,6 +1332,7 @@ class MBartModel(MBartPreTrainedModel):
     def forward(
         self,
         input_ids: torch.LongTensor = None,
+        #pos: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         decoder_input_ids: Optional[torch.LongTensor] = None,
         decoder_attention_mask: Optional[torch.LongTensor] = None,
@@ -1343,6 +1363,7 @@ class MBartModel(MBartPreTrainedModel):
         if encoder_outputs is None:
             encoder_outputs = self.encoder(
                 input_ids=input_ids,
+                #pos= pos,
                 attention_mask=attention_mask,
                 head_mask=head_mask,
                 inputs_embeds=inputs_embeds,
@@ -1442,6 +1463,7 @@ class MBartForConditionalGeneration(MBartPreTrainedModel):
     def forward(
         self,
         input_ids: torch.LongTensor = None,
+        #pos: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         decoder_input_ids: Optional[torch.LongTensor] = None,
         decoder_attention_mask: Optional[torch.LongTensor] = None,
@@ -1467,6 +1489,8 @@ class MBartForConditionalGeneration(MBartPreTrainedModel):
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
+        #print("inside-mbartconditionalgen")
+
         if labels is not None:
             if use_cache:
                 logger.warning("The `use_cache` argument is changed to `False` since `labels` is provided.")
@@ -1476,6 +1500,7 @@ class MBartForConditionalGeneration(MBartPreTrainedModel):
 
         outputs = self.model(
             input_ids,
+            #pos,
             attention_mask=attention_mask,
             decoder_input_ids=decoder_input_ids,
             encoder_outputs=encoder_outputs,

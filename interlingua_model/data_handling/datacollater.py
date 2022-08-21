@@ -6,6 +6,9 @@ from typing import Any, Callable, Dict, List, NewType, Optional, Tuple, Union
 from transformers.models.bert import BertTokenizer, BertTokenizerFast
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.utils import PaddingStrategy
+import torch.nn.functional as F
+import torch
+
 
 
 
@@ -58,7 +61,9 @@ class DataCollatorForSeq2Seq:
 
     def __call__(self, features, return_tensors=None):
         import numpy as np
-        # print(features)
+        #print("datacollater-called")
+        # self.features = features
+        #print(features)
         # print("---------------------------------*****_________________")
         if return_tensors is None:
             return_tensors = self.return_tensors
@@ -66,18 +71,29 @@ class DataCollatorForSeq2Seq:
         # We have to pad the labels before calling `tokenizer.pad` as this method won't pad them and needs them of the
         # same length to return tensors.
         if labels is not None:
-            max_label_length = max(len(l) for l in labels)
-            if self.pad_to_multiple_of is not None:
+            max_label_length = max(len(l) for l in labels)  # max length
+            #print("max-label-length in collater-",max_label_length) #84,74,..changing fro each batch
+            if self.pad_to_multiple_of is not None:  # not executing
                 max_label_length = (
                     (max_label_length + self.pad_to_multiple_of - 1)
                     // self.pad_to_multiple_of
                     * self.pad_to_multiple_of
                 )
-
+                #print("max-label-length in collater-",max_label_length)
+            feature_pos = []
+            #max_len = 128
             padding_side = self.tokenizer.padding_side
-            for feature in features:
-                remainder = [self.label_pad_token_id] * (max_label_length - len(feature["labels"]))
-                if isinstance(feature["labels"], list):
+            for feature in features: # across each sentence: dictionary
+                if "pos" in feature.keys():
+                                pos_lis = feature["pos"] # list converted to tensor
+                                #pos_tensor_padded = F.pad(torch.Tensor(pos_tensor),pad=(0,max_len - len(pos_tensor)), mode='constant',value = 0)
+                                feature_pos.append(pos_lis)
+                                del feature["pos"]  ###to delete pos
+
+
+
+                remainder = [self.label_pad_token_id] * (max_label_length - len(feature["labels"])) #padding
+                if isinstance(feature["labels"], list): # true
                     feature["labels"] = (
                         feature["labels"] + remainder if padding_side == "right" else remainder + feature["labels"]
                     )
@@ -85,14 +101,68 @@ class DataCollatorForSeq2Seq:
                     feature["labels"] = np.concatenate([feature["labels"], remainder]).astype(np.int64)
                 else:
                     feature["labels"] = np.concatenate([remainder, feature["labels"]]).astype(np.int64)
+        ### dict_keys(['input_ids', 'attention_mask', 'labels', 'pos']) for pos
+        # features1 = features[0]['input_ids','attention_mask','labels']
+        # del features[0]['pos']
 
-        features = self.tokenizer.pad(
+
+        self.features_before_pad = features
+        #del features
+        #list of 16 dictionaries--each dictionary 1 data with keys: dict_keys(['input_ids', 'attention_mask', 'labels', 'pos'])
+        """
+        features_pos = {}
+        # features_lis = []
+        features_pos['pos'] = [feature.pop('pos') for feature in features]
+        # features_pos['pos'] = features_lis
+        self.features_pos = features_pos
+        # self.features_lis = features_lis
+        
+        # features_pos = features.copy()
+        # for i in['input_ids', 'attention_mask', 'labels']:
+        #     del features_pos[0][i]
+        # del features[0]["pos"]
+        import torch.nn.functional as F
+        import torch
+        pos_lis = features_pos["pos"] # list of list
+        self.pos_lis = pos_lis
+        self.features_pos = features_pos
+        """
+        #beware of max- length --- here assigning
+        """
+        max_len = 128
+        # self.max_length = 128
+        pos_pad = [F.pad(torch.Tensor(pos),pad=(0,max_len - len(pos)), mode='constant',value = 0) for pos in pos_lis ]
+        #pos_pad is a list of tensor--> converted to tensor of tensor in next step:
+        pos_pad = torch.stack((pos_pad))
+        features_pos["pos"] = pos_pad
+
+        """
+        #print("Just Checking")
+        features = self.tokenizer.pad(   # gives 4 dictionaries:  dict_keys(['input_ids', 'attention_mask', 'labels', 'decoder_input_ids']))  16 in each
             features,
             padding=self.padding,
-            max_length=self.max_length,
+            max_length=self.max_length, #None
             pad_to_multiple_of=self.pad_to_multiple_of,
             return_tensors=return_tensors,
-        )
+        )  
+
+        input_ids_max_len = len(features["input_ids"][0])
+        d_type_input_ids = features["input_ids"][0].dtype
+        #print(d_type_input_ids)
+        feature_pos_padded = [F.pad(torch.Tensor(pos).to(d_type_input_ids),pad=(0,input_ids_max_len - len(pos)), mode='constant',value = 0) for pos in feature_pos ]
+        #print("padding-done-pos")
+        feature_pos_tensor = torch.stack((feature_pos_padded))
+        feature_pos_dict_final = {"pos":feature_pos_tensor}
+        self.feature_pos = feature_pos_dict_final
+
+
+
+        #for i in range(len(features)):
+        #    features[i]['pos'] = features_pos['pos'][i]
+        # final_features = [i['pos'] =  for i in range(len(features))]
+        
+        # final_features = [{**features[0], **features_pos}]
+        # self.final_features = final_features
 
         # prepare decoder_input_ids
         if (
@@ -102,5 +172,12 @@ class DataCollatorForSeq2Seq:
         ):
             decoder_input_ids = self.model.prepare_decoder_input_ids_from_labels(labels=features["labels"])
             features["decoder_input_ids"] = decoder_input_ids
+        
+        features["input_ids"] = (features["input_ids"], feature_pos_dict_final["pos"] )
+        self.features = features  
+        #final_features = {**features,**feature_pos_dict_final} # 5 dicts
+        #self.final_features = final_features
+
+        
 
         return features
