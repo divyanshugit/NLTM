@@ -19,6 +19,15 @@ collater--returns old: dict_keys(['input_ids', 'attention_mask', 'labels'])  cat
 
 ---> config load-> model load--print model--see if layer present of pos embeddign
 
+Changes made where for pos:
+1. line 168 in file trainer_seq2seq.py
+2. line 620 in trainer
+now pos reaching collater
+3. multiple changes in collater.py -- padding etc
+4. line 958, 933, 859 in modelling_mbart.py ( adding layer in model)
+Now model training but giving error in generation 
+5. line 524, 1119 in generation_utils_mod_pos_embedding
+6. line 51 modelling_utils
 ----------------------------training started-----------------------------------------------
 
 1) evaluate-- on test given while train
@@ -28,3 +37,5 @@ PS: 1. input_ids = (input_ids, pos)
     2. model --> encoder layer --> extra layer--> weights loading issue
     3. check args
     4. logger
+
+
