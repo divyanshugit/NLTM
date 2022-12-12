@@ -3,11 +3,14 @@ os.environ['CUDA_VISIBLE_DEVICES']="3"
 os.environ["WANDB_DISABLED"] = "true"
 
 import sys
-sys.path.append("/nlsasfs/home/ttbhashini/prathosh/divyanshu/NLTM/")
+sys.path.append("/nlsasfs/home/ttbhashini/prathosh/divyanshu/kd_exp/")
 
 import torch
 import numpy as np
+import pandas as pd
 from transformers import MBartForConditionalGeneration
+from datasets import load_dataset,load_metric
+from indicnlp.transliterate.unicode_transliterate import UnicodeIndicTransliterator
 
 from transformers import (AutoTokenizer,
                           AutoModelForSeq2SeqLM,
@@ -20,10 +23,57 @@ tokenizer = AutoTokenizer.from_pretrained(model_name, do_lower_case=False, use_f
 
 model = MBartForConditionalGeneration.from_pretrained(pretrained_model_name_or_path = "/nlsasfs/home/ttbhashini/prathosh/divyanshu/IndicBART")
 
-from datasets import load_from_disk
-tokenized_datasets = load_from_disk("/nlsasfs/home/ttbhashini/prathosh/divyanshu/fdata_kd")
 
+df = pd.read_csv("/nlsasfs/home/ttbhashini/prathosh/divyanshu/NLTM/data_parallel/data_hindi_kannada.csv")
+
+
+
+df.drop(["Unnamed: 0","Kannada"],axis=1,inplace = True)
+df.rename(columns = {'devanagari_kannada':'Kannada'}, inplace = True)
+# print(df.head())
+
+
+from datasets import Dataset
+
+dataset = Dataset.from_pandas(df,split='train')
+
+if '__index_level_0__' in dataset.column_names:
+        dataset = dataset.remove_columns(['__index_level_0__'])
+
+
+
+dataset = dataset.train_test_split(test_size=0.1, shuffle=True)
+
+source_lang = "Hindi"
+target_lang = "Kannada"
 batch_size = 16
+max_input_length = 128
+max_target_length = 128
+
+language_code = {'Hindi':'hi', 'Sanskrit':'sa', 'Kannada':'kn'}
+s_lang = language_code[source_lang.capitalize()]
+t_lang = language_code[target_lang.capitalize()]
+
+
+metric = load_metric('sacrebleu')
+
+def preprocess_function(examples):
+        inputs = [example + ' </s>' + f' <2{s_lang}>' for example in examples[source_lang]]
+        targets = [f'<2{t_lang}> ' + example + ' </s>' for example in examples[target_lang]]
+
+        model_inputs = tokenizer(inputs, max_length=max_input_length,padding=True, truncation=True)
+
+        with tokenizer.as_target_tokenizer():
+                labels = tokenizer(targets, max_length=max_target_length,padding=True, truncation=True)
+
+        #Changes
+        labels['input_ids'] = [[(l if l!=tokenizer.pad_token_id else -100) for l in label] for label in labels['input_ids']]
+
+        model_inputs['labels'] = labels['input_ids']
+        return model_inputs
+
+tokenized_datasets = dataset.map(preprocess_function, batched=True)
+
 data_collator = DataCollatorForSeq2Seq(tokenizer, model=model)  
 
 args = Seq2SeqTrainingArguments(
@@ -37,8 +87,6 @@ args = Seq2SeqTrainingArguments(
             save_total_limit=2,
             num_train_epochs=20,
             save_strategy = "epoch",
-            # _setup_devices = torch.cuda.set_device(7),
-            #label_names = ["pos"],
             predict_with_generate=True)
 
 
