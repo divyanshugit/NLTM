@@ -8,6 +8,17 @@ NLTM/kd_exp
 ├── train_vanilla.py          		  <-- Trains IndicBART for Hindi -- Kannada
 └── train_kd.py                           <-- Trains IndicBART with KD for Hindi -- Kannada
 ```
+
+## Get started:
+
+```python
+
+$ python train.py --s_lang Hindi --t_lang Kannada # You can choose s_lang and t_lang from Hindi, Sanskrit or Kannada
+
+$ python test.py --source_lang=Hindi --target_lang=Kannada # You can source_lang and target_lang from Hindi, Sanskrit or Kannada
+
+```
+
 ## Models:
 
 ```
@@ -20,4 +31,5 @@ NLTM/kd_exp
 ## Experiment Set-up:
 
 We will train model by utilizing model_1 & model_2 and compare it with model_3
+
 

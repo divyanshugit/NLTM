@@ -176,7 +176,7 @@ def main(argv):
                                      f'{target_lang}':tokenized_datasets[FLAGS.target_lang.capitalize()], 
                                      'predictions':predictions})
 
-    predictions_data.to_csv(f'{FLAGS.source_lang}_{FLAGS.target_lang}_NIOS_60000_predictions.csv')
+    predictions_data.to_csv(f'{FLAGS.source_lang}_{FLAGS.target_lang}_MKB_predictions.csv')
     #predictions_data.to_csv(f'back_translation_train_predictions.csv')                                                                                                                                                                   
 
 
