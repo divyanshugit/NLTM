@@ -1,23 +1,26 @@
 import pandas as pd
 
-hi_ka_df = pd.read_csv("/nlsasfs/home/ttbhashini/prathosh/divyanshu/NLTM/data_parallel/data_hindi_kannada.csv")
-ka_sa_df = pd.read_csv("/nlsasfs/home/ttbhashini/prathosh/divyanshu/NLTM/data_parallel/data_kannada_sanskrit.csv")
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+from indicnlp.transliterate.unicode_transliterate import UnicodeIndicTransliterator
 
-hi_ka_df.drop(["devanagari_kannada","Kannada"],axis=1,inplace=True)
+filepath = "/nlsasfs/home/ttbhashini/prathosh/divyanshu/kd_exp/data/parallel_mkb_hsk_train_data.csv"
 
-df1 = hi_ka_df.drop_duplicates(subset='Unnamed: 0', keep='first')
-df2 = ka_sa_df.drop_duplicates(subset='Unnamed: 0', keep='first')
+df = pd.read_csv(filepath)
 
-final_df = pd.merge(df1, df2, on='Unnamed: 0', how='inner')
+def convert_devanagri(sentence):
+    return UnicodeIndicTransliterator.transliterate(sentence, 'kn', 'hi')
 
-final_df.drop(["Unnamed: 0","Kannada"],axis=1,inplace = True)
-final_df.rename(columns = {'devanagari_kannada':'Kannada'}, inplace = True)
+df['devanagari_kannada'] = df.Kannada.apply(lambda x: convert_devanagri(x))
 
-final_df.to_csv("final_test_data.csv",index=False)
+# print(df.head())
+# print(df.columns)
+df.drop(["Kannada"],axis=1,inplace = True)
+df.rename(columns = {'devanagari_kannada':'Kannada'}, inplace = True)
+# print(df.head())
 
 from datasets import Dataset
 
-dataset = Dataset.from_pandas(final_df,split='train')
+dataset = Dataset.from_pandas(df,split='train')
 
 if '__index_level_0__' in dataset.column_names:
         dataset = dataset.remove_columns(['__index_level_0__'])
@@ -26,9 +29,6 @@ dataset = dataset.train_test_split(test_size=0.10, shuffle=False)
 
 #Utils setup
 import transformers
-
-model_name = "ai4bharat/IndicBART"
-tokenizer = transformers.AutoTokenizer.from_pretrained(model_name, do_lower_case=False, use_fast=False, keep_accents=True)
 
 s_lang = 'hi'
 t_lang = 'ka'
@@ -39,18 +39,18 @@ max_input_length = 128
 max_target_length = 128
 batch_size = 16
 
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-from indicnlp.transliterate.unicode_transliterate import UnicodeIndicTransliterator
+model_name = "ai4bharat/IndicBART"
+tokenizer = transformers.AutoTokenizer.from_pretrained(model_name, do_lower_case=False, use_fast=False, keep_accents=True)
 
-model_name = f"/nlsasfs/home/ttbhashini/prathosh/divyanshu/IndicBART"
+model_name = f"/nlsasfs/home/ttbhashini/prathosh/divyanshu/kd_exp/models/IndicBART_Hindi_Sanskrit"
 tokenizer_hi = AutoTokenizer.from_pretrained(model_name, do_lower_case=False, use_fast=False, keep_accents=True)
 model_hi = AutoModelForSeq2SeqLM.from_pretrained(model_name)
 
 max_length = 128
 num_beams = 4
-bos_id = tokenizer._convert_token_to_id_with_added_voc('<s>')
-eos_id = tokenizer._convert_token_to_id_with_added_voc('</s>')
-pad_id = tokenizer._convert_token_to_id_with_added_voc('<pad>')
+bos_id = tokenizer_hi._convert_token_to_id_with_added_voc('<s>')
+eos_id = tokenizer_hi._convert_token_to_id_with_added_voc('</s>')
+pad_id = tokenizer_hi._convert_token_to_id_with_added_voc('<pad>')
 
 activation = {}
 def get_activation(name):
@@ -58,9 +58,9 @@ def get_activation(name):
         activation[name] = output.detach()
     return hook
 
-model_name = f"/nlsasfs/home/ttbhashini/prathosh/divyanshu/IndicBART_sanskrit_kannada"
-tokenizer_sa = AutoTokenizer.from_pretrained(model_name, do_lower_case=False, use_fast=False, keep_accents=True)
+model_name = f"/nlsasfs/home/ttbhashini/prathosh/divyanshu/kd_exp/models/IndicBART_Sanskrit_Kannada"
 
+tokenizer_sa = AutoTokenizer.from_pretrained(model_name, do_lower_case=False, use_fast=False, keep_accents=True)
 model_sa = AutoModelForSeq2SeqLM.from_pretrained(model_name)
 
 import torch
@@ -75,9 +75,9 @@ def get_hi_enc(sentence):
 
 max_length = 128
 num_beams = 4
-bos_id = tokenizer._convert_token_to_id_with_added_voc('<s>')
-eos_id = tokenizer._convert_token_to_id_with_added_voc('</s>')
-pad_id = tokenizer._convert_token_to_id_with_added_voc('<pad>')
+bos_id = tokenizer_sa._convert_token_to_id_with_added_voc('<s>')
+eos_id = tokenizer_sa._convert_token_to_id_with_added_voc('</s>')
+pad_id = tokenizer_sa._convert_token_to_id_with_added_voc('<pad>')
 
 def get_ka_dec(sentence):
     #sentence += ' </s>' + f' <2sa>'
@@ -110,10 +110,6 @@ def preprocess_function(examples):
         #print(model_inputs['input_ids'][1])
 
         for i in tqdm(range(len(inputs))):
-            # print(len(model_inputs['input_ids'][i]),model_inputs['input_ids'][i])
-            # print
-            #enc_val = get_hi_enc(sentences[i])
-            #print("inside-loop")
             enc_val = get_hi_enc(model_inputs['input_ids'][i])
             hi_enc_list.append(enc_val)
             dec_val = get_ka_dec(model_inputs['labels'][i])
@@ -127,8 +123,5 @@ def preprocess_function(examples):
         return model_inputs
 
 tokenized_datasets = dataset.map(preprocess_function, batched=True)
-#NIos + MKB--12K approx sentence-- 56mins
 
-#from datasets import save_to_disk
-
-tokenized_datasets.save_to_disk("/nlsasfs/home/ttbhashini/prathosh/divyanshu/kd_layer5")
+tokenized_datasets.save_to_disk("/nlsasfs/home/ttbhashini/prathosh/divyanshu/kd_exp/data/token_data")
