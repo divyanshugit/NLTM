@@ -18,10 +18,10 @@ from transformers import (AutoTokenizer,
 model_name = "ai4bharat/IndicBART"
 tokenizer = AutoTokenizer.from_pretrained(model_name, do_lower_case=False, use_fast=False, keep_accents=True)
 
-model = MBartForConditionalGeneration.from_pretrained(pretrained_model_name_or_path = "/nlsasfs/home/ttbhashini/prathosh/divyanshu/kd_exp/IndicBART")
+model = MBartForConditionalGeneration.from_pretrained(pretrained_model_name_or_path = "/nlsasfs/home/ttbhashini/prathosh/divyanshu/kd_exp/models/IndicBART")
 
 from datasets import load_from_disk
-tokenized_datasets = load_from_disk("/nlsasfs/home/ttbhashini/prathosh/divyanshu/kd_layer5")
+tokenized_datasets = load_from_disk("/nlsasfs/home/ttbhashini/prathosh/divyanshu/kd_exp/data/token_data")
 
 from kd.trainer.trainer_seq2seq_kd import Seq2SeqTrainer
 from kd.trainer import trainer_kd
@@ -84,5 +84,5 @@ trainer = Seq2SeqTrainer(
 
 trainer.train()
 
-output_dir = f'/nlsasfs/home/ttbhashini/prathosh/divyanshu/kd_exp/model_weights/run_1'
+output_dir = f'/nlsasfs/home/ttbhashini/prathosh/divyanshu/kd_exp/models/run_kd1'
 trainer.save_model(output_dir)
